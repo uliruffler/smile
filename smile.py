@@ -100,7 +100,7 @@ class EmoticonPicker(Gtk.Window):
             try:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     return json.load(f)
-            except:
+            except (FileNotFoundError, json.JSONDecodeError, IOError, PermissionError):
                 return []
         return []
     
@@ -109,7 +109,7 @@ class EmoticonPicker(Gtk.Window):
         try:
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(self.history, f, ensure_ascii=False)
-        except Exception as e:
+        except (IOError, OSError, PermissionError) as e:
             print(f"Error saving history: {e}")
     
     def add_to_history(self, emoticon):
@@ -218,7 +218,7 @@ class EmoticonPicker(Gtk.Window):
             # Use xdotool to type the emoticon
             subprocess.run(['xdotool', 'type', '--clearmodifiers', emoticon], 
                          check=False, timeout=1)
-        except Exception as e:
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
             print(f"Error pasting emoticon: {e}")
         
         # Show window again after a short delay
