@@ -1,0 +1,23 @@
+[package]
+name = "smile"
+version = "1.0.0"
+edition = "2021"
+authors = ["Smile Contributors"]
+description = "A simple emoticon picker for Gnome/Linux"
+license = "MIT"
+repository = "https://github.com/uliruffler/smile"
+
+[dependencies]
+gtk = "0.18"
+gdk = "0.18"
+glib = "0.18"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+dirs = "5.0"
+lazy_static = "1.4"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
