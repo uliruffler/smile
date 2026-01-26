@@ -8,12 +8,11 @@
 //! - Escape key quits the application
 
 use arboard::Clipboard;
-use gdk::keys::constants as key;
-use glib::Propagation;
+use gdk::Key;
 use gtk::prelude::*;
 use gtk::{
-    Box as GtkBox, Button, Entry, Frame, Grid, Label, Orientation, PolicyType, ScrolledWindow,
-    Window, WindowPosition, WindowType,
+    ApplicationWindow, Box, Button, Entry, Frame, Grid, Label, Orientation, PolicyType,
+    ScrolledWindow,
 };
 use lazy_static::lazy_static;
 use std::cell::RefCell;
@@ -43,9 +42,9 @@ mod tests;
 /// Emoticon picker window state
 #[derive(Clone)]
 struct EmoticonPicker {
-    window: Window,
+    window: ApplicationWindow,
     search_entry: Entry,
-    emoticons_box: GtkBox,
+    emoticons_box: Box,
     history: Rc<RefCell<Vec<String>>>,
     config: Rc<RefCell<Config>>,
     first_button: Rc<RefCell<Option<Button>>>,
@@ -54,12 +53,13 @@ struct EmoticonPicker {
 
 impl EmoticonPicker {
     /// Create a new emoticon picker window
-    fn new() -> Self {
-        let window = Window::new(WindowType::Toplevel);
-        window.set_title("Smile - Emoticon Picker");
-        window.set_default_size(600, 500);
-        window.set_position(WindowPosition::Center);
-        window.set_keep_above(true);
+    fn new(app: &gtk::Application) -> Self {
+        let window = ApplicationWindow::builder()
+            .application(app)
+            .title("Smile - Emoticon Picker")
+            .default_width(600)
+            .default_height(500)
+            .build();
 
         // Setup configuration
         let config = Config::new().expect("Failed to initialize configuration");
@@ -68,35 +68,36 @@ impl EmoticonPicker {
         let history = config.load_recent();
 
         // Main container
-        let main_box = GtkBox::new(Orientation::Vertical, 10);
+        let main_box = Box::new(Orientation::Vertical, 10);
         main_box.set_margin_start(10);
         main_box.set_margin_end(10);
         main_box.set_margin_top(10);
         main_box.set_margin_bottom(10);
 
         // Search box
-        let search_box = GtkBox::new(Orientation::Horizontal, 5);
+        let search_box = Box::new(Orientation::Horizontal, 5);
         let search_label = Label::new(Some("Search:"));
-        search_box.pack_start(&search_label, false, false, 0);
+        search_box.append(&search_label);
 
         let search_entry = Entry::new();
         search_entry.set_placeholder_text(Some("Type to filter emoticons..."));
-        search_box.pack_start(&search_entry, true, true, 0);
+        search_entry.set_hexpand(true);
+        search_box.append(&search_entry);
 
-        main_box.pack_start(&search_box, false, false, 0);
+        main_box.append(&search_box);
 
         // Scrolled window for emoticons
-        let scrolled = ScrolledWindow::new(Option::<&gtk::Adjustment>::None, Option::<&gtk::Adjustment>::None);
+        let scrolled = ScrolledWindow::new();
         scrolled.set_policy(PolicyType::Never, PolicyType::Automatic);
         scrolled.set_vexpand(true);
 
         // Container for all emoticons
-        let emoticons_box = GtkBox::new(Orientation::Vertical, 10);
-        scrolled.add(&emoticons_box);
+        let emoticons_box = Box::new(Orientation::Vertical, 10);
+        scrolled.set_child(Some(&emoticons_box));
 
-        main_box.pack_start(&scrolled, true, true, 0);
+        main_box.append(&scrolled);
 
-        window.add(&main_box);
+        window.set_child(Some(&main_box));
 
         let picker = EmoticonPicker {
             window: window.clone(),
@@ -111,17 +112,19 @@ impl EmoticonPicker {
         picker.build_emoticons_display("");
 
         // Connect search entry key press event for Down arrow navigation
+        let key_controller = gtk::EventControllerKey::new();
         let picker_clone = picker.clone();
-        search_entry.connect_key_press_event(move |_, event_key| {
-            if event_key.keyval() == key::Down {
+        key_controller.connect_key_pressed(move |_, key, _, _| {
+            if key == Key::Down {
                 // Focus the first button when Down is pressed
                 if let Some(ref button) = *picker_clone.first_button.borrow() {
                     button.grab_focus();
-                    return Propagation::Stop;
+                    return glib::Propagation::Stop;
                 }
             }
-            Propagation::Proceed
+            glib::Propagation::Proceed
         });
+        search_entry.add_controller(key_controller);
 
         // Connect search changed event
         let picker_clone = picker.clone();
@@ -130,20 +133,15 @@ impl EmoticonPicker {
             picker_clone.build_emoticons_display(&filter_text);
         });
 
-        // Connect key press event for Escape
-        window.connect_key_press_event(|_, event_key| {
-            if event_key.keyval() == key::Escape {
-                gtk::main_quit();
-                Propagation::Stop
-            } else {
-                Propagation::Proceed
+        // Connect key press event for Escape on window
+        let window_key_controller = gtk::EventControllerKey::new();
+        window_key_controller.connect_key_pressed(move |_, key, _, _| {
+            if key == Key::Escape {
+                std::process::exit(0);
             }
+            glib::Propagation::Proceed
         });
-
-        // Connect destroy event
-        window.connect_destroy(|_| {
-            gtk::main_quit();
-        });
+        window.add_controller(window_key_controller);
 
         // Focus on search entry
         search_entry.grab_focus();
@@ -184,7 +182,7 @@ impl EmoticonPicker {
         *self.first_button.borrow_mut() = None;
 
         // Clear existing content
-        for child in self.emoticons_box.children() {
+        while let Some(child) = self.emoticons_box.first_child() {
             self.emoticons_box.remove(&child);
         }
 
@@ -222,8 +220,8 @@ impl EmoticonPicker {
                 }
             }
 
-            history_frame.add(&history_grid);
-            self.emoticons_box.pack_start(&history_frame, false, false, 0);
+            history_frame.set_child(Some(&history_grid));
+            self.emoticons_box.append(&history_frame);
         }
         drop(history);
 
@@ -280,11 +278,11 @@ impl EmoticonPicker {
                 }
             }
 
-            frame.add(&grid);
-            self.emoticons_box.pack_start(&frame, false, false, 0);
+            frame.set_child(Some(&grid));
+            self.emoticons_box.append(&frame);
         }
 
-        self.window.show_all();
+        self.window.present();
     }
 
     /// Create a button for an emoticon
@@ -307,7 +305,7 @@ impl EmoticonPicker {
         self.add_to_history(emoticon.to_string());
 
         // Hide window
-        self.window.hide();
+        self.window.set_visible(false);
 
         // Wait a bit for window to hide and focus to return
         let emoticon = emoticon.to_string();
@@ -363,7 +361,7 @@ impl EmoticonPicker {
 
     /// Reopen the window
     fn reopen_window(&self) {
-        self.window.show_all();
+        self.window.set_visible(true);
         self.window.present();
         self.search_entry.grab_focus();
 
@@ -374,21 +372,22 @@ impl EmoticonPicker {
 
     /// Show the window
     fn show(&self) {
-        self.window.show_all();
+        self.window.present();
     }
 }
 
 fn main() {
-    // Initialize GTK
-    if gtk::init().is_err() {
-        eprintln!("Failed to initialize GTK.");
-        std::process::exit(1);
-    }
+    // Create GTK Application
+    let app = gtk::Application::builder()
+        .application_id("com.github.uliruffler.smile")
+        .build();
 
-    // Create and show the emoticon picker
-    let picker = EmoticonPicker::new();
-    picker.show();
+    app.connect_activate(|app| {
+        // Create and show the emoticon picker
+        let picker = EmoticonPicker::new(app);
+        picker.show();
+    });
 
-    // Start the GTK main event loop
-    gtk::main();
+    // Run the application
+    app.run();
 }
