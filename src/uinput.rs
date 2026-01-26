@@ -19,8 +19,30 @@ const KEY_RELEASE: i32 = 0;
 const KEY_PRESS: i32 = 1;
 
 // Common key codes from linux/input-event-codes.h
-const KEY_V: u16 = 47;
 const KEY_LEFTCTRL: u16 = 29;
+const KEY_LEFTSHIFT: u16 = 42;
+const KEY_U: u16 = 22;
+const KEY_ENTER: u16 = 28;
+
+// Number keys for hex digits
+const KEY_0: u16 = 11;
+const KEY_1: u16 = 2;
+const KEY_2: u16 = 3;
+const KEY_3: u16 = 4;
+const KEY_4: u16 = 5;
+const KEY_5: u16 = 6;
+const KEY_6: u16 = 7;
+const KEY_7: u16 = 8;
+const KEY_8: u16 = 9;
+const KEY_9: u16 = 10;
+
+// Letter keys for hex digits A-F
+const KEY_A: u16 = 30;
+const KEY_B: u16 = 48;
+const KEY_C: u16 = 46;
+const KEY_D: u16 = 32;
+const KEY_E: u16 = 18;
+const KEY_F: u16 = 33;
 
 // ioctl constants
 const UI_SET_EVBIT: u64 = 0x40045564;
@@ -177,24 +199,78 @@ impl UinputKeyboard {
     }
 
 
-    /// Paste from clipboard by sending Ctrl+V
-    pub fn paste_from_clipboard(&mut self) -> io::Result<()> {
-        // Press Ctrl
+    /// Convert a hex digit character to its corresponding keycode
+    fn hex_char_to_keycode(c: char) -> Option<u16> {
+        match c {
+            '0' => Some(KEY_0),
+            '1' => Some(KEY_1),
+            '2' => Some(KEY_2),
+            '3' => Some(KEY_3),
+            '4' => Some(KEY_4),
+            '5' => Some(KEY_5),
+            '6' => Some(KEY_6),
+            '7' => Some(KEY_7),
+            '8' => Some(KEY_8),
+            '9' => Some(KEY_9),
+            'a' | 'A' => Some(KEY_A),
+            'b' | 'B' => Some(KEY_B),
+            'c' | 'C' => Some(KEY_C),
+            'd' | 'D' => Some(KEY_D),
+            'e' | 'E' => Some(KEY_E),
+            'f' | 'F' => Some(KEY_F),
+            _ => None,
+        }
+    }
+
+    /// Type a Unicode character using Ctrl+Shift+u method
+    /// This is the standard GTK/Linux method for entering Unicode characters
+    pub fn type_unicode_char(&mut self, c: char) -> io::Result<()> {
+        // Get Unicode codepoint as hex string
+        let codepoint = c as u32;
+        let hex_string = format!("{:x}", codepoint);
+
+        // Press Ctrl+Shift+u to start Unicode input mode
         self.press_key(KEY_LEFTCTRL)?;
         thread::sleep(Duration::from_millis(10));
-
-        // Press V while Ctrl is held
-        self.press_key(KEY_V)?;
+        self.press_key(KEY_LEFTSHIFT)?;
+        thread::sleep(Duration::from_millis(10));
+        self.press_key(KEY_U)?;
         thread::sleep(Duration::from_millis(10));
 
-        // Release V
-        self.release_key(KEY_V)?;
+        // Release u, Shift, and Ctrl
+        self.release_key(KEY_U)?;
         thread::sleep(Duration::from_millis(10));
-
-        // Release Ctrl
+        self.release_key(KEY_LEFTSHIFT)?;
+        thread::sleep(Duration::from_millis(10));
         self.release_key(KEY_LEFTCTRL)?;
+        thread::sleep(Duration::from_millis(20));
+
+        // Type each hex digit
+        for hex_char in hex_string.chars() {
+            if let Some(keycode) = Self::hex_char_to_keycode(hex_char) {
+                self.press_key(keycode)?;
+                thread::sleep(Duration::from_millis(10));
+                self.release_key(keycode)?;
+                thread::sleep(Duration::from_millis(10));
+            }
+        }
+
+        // Press Enter to confirm
+        self.press_key(KEY_ENTER)?;
+        thread::sleep(Duration::from_millis(10));
+        self.release_key(KEY_ENTER)?;
         thread::sleep(Duration::from_millis(10));
 
+        Ok(())
+    }
+
+    /// Type a string by typing each Unicode character individually
+    pub fn type_string(&mut self, text: &str) -> io::Result<()> {
+        for c in text.chars() {
+            self.type_unicode_char(c)?;
+            // Small delay between characters
+            thread::sleep(Duration::from_millis(20));
+        }
         Ok(())
     }
 }

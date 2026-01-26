@@ -7,20 +7,17 @@
 //! - Clicks paste the emoticon and reopen the window
 //! - Escape key quits the application
 
-use arboard::Clipboard;
 use gdk::Key;
 use gtk::prelude::*;
 use gtk::{
     ApplicationWindow, Box, Button, Entry, Frame, Grid, Label, Orientation, PolicyType,
     ScrolledWindow,
 };
-use lazy_static::lazy_static;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Mutex;
 
 mod emoticons;
-use emoticons::EMOTICONS;
+use emoticons::get_emoticons;
 
 mod uinput;
 use uinput::UinputKeyboard;
@@ -28,16 +25,9 @@ use uinput::UinputKeyboard;
 mod settings;
 use settings::Config;
 
-lazy_static! {
-    static ref CLIPBOARD: Mutex<Option<Clipboard>> = Mutex::new(Clipboard::new().ok());
-}
-
-fn get_clipboard() -> &'static Mutex<Option<Clipboard>> {
-    &CLIPBOARD
-}
-
 #[cfg(test)]
 mod tests;
+
 
 /// Emoticon picker window state
 #[derive(Clone)]
@@ -226,7 +216,7 @@ impl EmoticonPicker {
         drop(history);
 
         // Show categorized emoticons
-        for (category, emoticons) in EMOTICONS.iter() {
+        for (category, emoticons) in get_emoticons().iter() {
             // Filter emoticons
             let filtered_emoticons: Vec<&String> = if !filter_text.is_empty() {
                 let config = self.config.borrow();
@@ -318,34 +308,20 @@ impl EmoticonPicker {
 
     /// Paste the emoticon using uinput (kernel-level input injection)
     fn paste_emoticon(&self, emoticon: &str) {
-        // Copy emoticon to clipboard using arboard
-        {
-            let mut clipboard_guard = get_clipboard().lock().unwrap();
-            if let Some(ref mut cb) = *clipboard_guard {
-                if let Err(e) = cb.set_text(emoticon) {
-                    eprintln!("Failed to set clipboard: {}", e);
-                    return;
-                }
-            } else {
-                eprintln!("Clipboard not available");
-                return;
-            }
-        }
-
         // Wait a bit for window to fully hide and focus to return
         std::thread::sleep(std::time::Duration::from_millis(100));
 
-        // Use uinput to inject Ctrl+V at kernel level
+        // Use uinput to type Unicode characters via Ctrl+Shift+u method
         // This works on X11, Wayland, and even text consoles
         match UinputKeyboard::new() {
             Ok(mut keyboard) => {
-                println!("Pasting from clipboard with Ctrl+V...");
-                if let Err(e) = keyboard.paste_from_clipboard() {
-                    eprintln!("Failed to paste via uinput: {}. Emoticon is in clipboard.", e);
+                println!("Typing emoticon using Unicode input...");
+                if let Err(e) = keyboard.type_string(emoticon) {
+                    eprintln!("Failed to type emoticon via uinput: {}", e);
                 }
             }
             Err(e) => {
-                eprintln!("Failed to create uinput device: {}. Emoticon is in clipboard.", e);
+                eprintln!("Failed to create uinput device: {}", e);
                 eprintln!("Note: uinput requires write access to /dev/uinput or /dev/input/uinput");
                 eprintln!("You may need to add your user to the 'input' group or run with appropriate permissions.");
             }
