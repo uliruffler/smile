@@ -48,6 +48,7 @@ struct EmoticonPicker {
     emoticons_box: GtkBox,
     history: Rc<RefCell<Vec<String>>>,
     config: Rc<RefCell<Config>>,
+    first_button: Rc<RefCell<Option<Button>>>,
 }
 
 
@@ -103,10 +104,24 @@ impl EmoticonPicker {
             emoticons_box: emoticons_box.clone(),
             history: Rc::new(RefCell::new(history)),
             config: Rc::new(RefCell::new(config)),
+            first_button: Rc::new(RefCell::new(None)),
         };
 
         // Build the emoticon display
         picker.build_emoticons_display("");
+
+        // Connect search entry key press event for Down arrow navigation
+        let picker_clone = picker.clone();
+        search_entry.connect_key_press_event(move |_, event_key| {
+            if event_key.keyval() == key::Down {
+                // Focus the first button when Down is pressed
+                if let Some(ref button) = *picker_clone.first_button.borrow() {
+                    button.grab_focus();
+                    return Propagation::Stop;
+                }
+            }
+            Propagation::Proceed
+        });
 
         // Connect search changed event
         let picker_clone = picker.clone();
@@ -165,6 +180,9 @@ impl EmoticonPicker {
 
     /// Build or rebuild the emoticons display
     fn build_emoticons_display(&self, filter_text: &str) {
+        // Clear first button reference
+        *self.first_button.borrow_mut() = None;
+
         // Clear existing content
         for child in self.emoticons_box.children() {
             self.emoticons_box.remove(&child);
@@ -186,8 +204,16 @@ impl EmoticonPicker {
 
             let mut col = 0;
             let mut row = 0;
+            let mut is_first = true;
             for emoticon in history.iter() {
                 let button = self.create_emoticon_button(emoticon);
+
+                // Store the first button for focus navigation
+                if is_first {
+                    *self.first_button.borrow_mut() = Some(button.clone());
+                    is_first = false;
+                }
+
                 history_grid.attach(&button, col, row, 1, 1);
                 col += 1;
                 if col >= 10 {
@@ -236,8 +262,16 @@ impl EmoticonPicker {
             // Add emoticons to grid
             let mut col = 0;
             let mut row = 0;
+            let mut is_first = self.first_button.borrow().is_none();
             for emoticon in filtered_emoticons {
                 let button = self.create_emoticon_button(emoticon);
+
+                // Store the first button for focus navigation if not already set
+                if is_first {
+                    *self.first_button.borrow_mut() = Some(button.clone());
+                    is_first = false;
+                }
+
                 grid.attach(&button, col, row, 1, 1);
                 col += 1;
                 if col >= 10 {
