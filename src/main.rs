@@ -7,6 +7,7 @@
 //! - Clicks paste the emoticon and reopen the window
 //! - Escape key quits the application
 
+use arboard::Clipboard;
 use gdk::keys::constants as key;
 use glib::Propagation;
 use gtk::prelude::*;
@@ -14,15 +15,27 @@ use gtk::{
     Box as GtkBox, Button, Entry, Frame, Grid, Label, Orientation, PolicyType, ScrolledWindow,
     Window, WindowPosition, WindowType,
 };
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
 use std::rc::Rc;
+use std::sync::Mutex;
 
 mod emoticons;
 use emoticons::EMOTICONS;
+
+mod uinput;
+use uinput::UinputKeyboard;
+
+lazy_static! {
+    static ref CLIPBOARD: Mutex<Option<Clipboard>> = Mutex::new(Clipboard::new().ok());
+}
+
+fn get_clipboard() -> &'static Mutex<Option<Clipboard>> {
+    &CLIPBOARD
+}
 
 #[cfg(test)]
 mod tests;
@@ -289,27 +302,40 @@ impl EmoticonPicker {
         });
     }
 
-    /// Paste the emoticon using clipboard
+    /// Paste the emoticon using uinput (kernel-level input injection)
     fn paste_emoticon(&self, emoticon: &str) {
-        // Copy emoticon to clipboard using xclip
-        // Note: xclip is better for Unicode than xdotool type
-        if let Ok(mut child) = Command::new("xclip")
-            .args(&["-selection", "clipboard"])
-            .stdin(std::process::Stdio::piped())
-            .spawn()
+        // Copy emoticon to clipboard using arboard
         {
-            if let Some(mut stdin) = child.stdin.take() {
-                use std::io::Write;
-                let _ = stdin.write_all(emoticon.as_bytes());
+            let mut clipboard_guard = get_clipboard().lock().unwrap();
+            if let Some(ref mut cb) = *clipboard_guard {
+                if let Err(e) = cb.set_text(emoticon) {
+                    eprintln!("Failed to set clipboard: {}", e);
+                    return;
+                }
+            } else {
+                eprintln!("Clipboard not available");
+                return;
             }
-            let _ = child.wait();
         }
 
-        // Paste using Ctrl+V with xdotool
-        Command::new("xdotool")
-            .args(&["key", "--clearmodifiers", "ctrl+v"])
-            .output()
-            .ok();
+        // Wait a bit for window to fully hide and focus to return
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // Use uinput to inject Ctrl+V at kernel level
+        // This works on X11, Wayland, and even text consoles
+        match UinputKeyboard::new() {
+            Ok(mut keyboard) => {
+                println!("Pasting from clipboard with Ctrl+V...");
+                if let Err(e) = keyboard.paste_from_clipboard() {
+                    eprintln!("Failed to paste via uinput: {}. Emoticon is in clipboard.", e);
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to create uinput device: {}. Emoticon is in clipboard.", e);
+                eprintln!("Note: uinput requires write access to /dev/uinput or /dev/input/uinput");
+                eprintln!("You may need to add your user to the 'input' group or run with appropriate permissions.");
+            }
+        }
 
         // Show window again after a short delay
         let picker = self.clone();
