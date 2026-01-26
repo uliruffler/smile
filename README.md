@@ -107,6 +107,33 @@ cargo build --release
 - ✅ Any input consumer
 
 **Note**: You must be in the `input` group for automatic typing to work. The emoticon is also copied to your clipboard as a fallback.
+
+## Configuration
+
+Smile stores its configuration in `~/.smile/`:
+
+- **`settings.toml`**: Application settings and keyword definitions for searching emoticons
+- **`recent.json`**: Recently used emoticons (automatically migrates from old location)
+
+### Customizing Keywords
+
+You can customize search keywords by editing `~/.smile/settings.toml`. Each category has associated keywords that make finding emoticons easier:
+
+```toml
+[keywords.happy]
+terms = ["happy", "joy", "smile", "grin", "cheerful", "glad", "pleased"]
+```
+
+When searching, typing any of these keywords (e.g., "joy") will show emoticons from that category.
+
+### Settings
+
+```toml
+max_recent = 10  # Number of recent emoticons to remember
+```
+
+For more details, see [SETTINGS.md](SETTINGS.md).
+
 ## Categories
 - Happy, Sad, Angry, Surprised, Love
 - Gestures, Faces, Cool, Symbols, Objects

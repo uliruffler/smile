@@ -16,10 +16,7 @@ use gtk::{
     Window, WindowPosition, WindowType,
 };
 use lazy_static::lazy_static;
-use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::fs;
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Mutex;
 
@@ -28,6 +25,9 @@ use emoticons::EMOTICONS;
 
 mod uinput;
 use uinput::UinputKeyboard;
+
+mod settings;
+use settings::Config;
 
 lazy_static! {
     static ref CLIPBOARD: Mutex<Option<Clipboard>> = Mutex::new(Clipboard::new().ok());
@@ -47,13 +47,9 @@ struct EmoticonPicker {
     search_entry: Entry,
     emoticons_box: GtkBox,
     history: Rc<RefCell<Vec<String>>>,
-    config_file: PathBuf,
+    config: Rc<RefCell<Config>>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct Config {
-    history: Vec<String>,
-}
 
 impl EmoticonPicker {
     /// Create a new emoticon picker window
@@ -65,15 +61,10 @@ impl EmoticonPicker {
         window.set_keep_above(true);
 
         // Setup configuration
-        let config_dir = dirs::config_dir()
-            .expect("Failed to get config directory")
-            .join("smile");
-
-        fs::create_dir_all(&config_dir).ok();
-        let config_file = config_dir.join("history.json");
+        let config = Config::new().expect("Failed to initialize configuration");
 
         // Load history
-        let history = Self::load_history(&config_file);
+        let history = config.load_recent();
 
         // Main container
         let main_box = GtkBox::new(Orientation::Vertical, 10);
@@ -111,7 +102,7 @@ impl EmoticonPicker {
             search_entry: search_entry.clone(),
             emoticons_box: emoticons_box.clone(),
             history: Rc::new(RefCell::new(history)),
-            config_file,
+            config: Rc::new(RefCell::new(config)),
         };
 
         // Build the emoticon display
@@ -145,24 +136,11 @@ impl EmoticonPicker {
         picker
     }
 
-    /// Load emoticon usage history from file
-    fn load_history(config_file: &PathBuf) -> Vec<String> {
-        if let Ok(content) = fs::read_to_string(config_file) {
-            if let Ok(config) = serde_json::from_str::<Config>(&content) {
-                return config.history;
-            }
-        }
-        Vec::new()
-    }
-
     /// Save emoticon usage history to file
     fn save_history(&self) {
-        let config = Config {
-            history: self.history.borrow().clone(),
-        };
-        if let Ok(json) = serde_json::to_string_pretty(&config) {
-            fs::write(&self.config_file, json).ok();
-        }
+        let history = self.history.borrow();
+        let config = self.config.borrow();
+        config.save_recent(&history).ok();
     }
 
     /// Add emoticon to history (most recent first)
@@ -177,8 +155,9 @@ impl EmoticonPicker {
         // Add to front
         history.insert(0, emoticon);
 
-        // Keep only last 10
-        history.truncate(10);
+        // Keep only max_recent items from settings
+        let max_recent = self.config.borrow().settings().max_recent;
+        history.truncate(max_recent);
 
         drop(history);
         self.save_history();
@@ -226,11 +205,14 @@ impl EmoticonPicker {
         for (category, emoticons) in EMOTICONS.iter() {
             // Filter emoticons
             let filtered_emoticons: Vec<&String> = if !filter_text.is_empty() {
+                let config = self.config.borrow();
                 emoticons
                     .iter()
                     .filter(|e| {
-                        e.to_lowercase().contains(&filter_lower)
-                            || category.to_lowercase().contains(&filter_lower)
+                        // Match emoticon text
+                        e.to_lowercase().contains(&filter_lower) ||
+                        // Match category name or keywords
+                        config.matches_category_keywords(category, &filter_lower)
                     })
                     .collect()
             } else {
