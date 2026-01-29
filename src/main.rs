@@ -384,6 +384,33 @@ impl EmoticonPicker {
 
         // Use glib's async to avoid blocking GTK
         glib::spawn_future_local(async move {
+            // Wait for modifier keys to be released before typing
+            // This is important for Shift+Enter to work correctly
+            let mut wait_count = 0;
+            let max_wait = 10; // 10 * 50ms = 500ms max
+
+            while wait_count < max_wait {
+                glib::timeout_future(std::time::Duration::from_millis(50)).await;
+                wait_count += 1;
+
+                // Check if modifier keys are still pressed
+                let mut has_modifiers = false;
+                if let Some(display) = gtk::gdk::Display::default() {
+                    if let Some(seat) = display.default_seat() {
+                        if let Some(device) = seat.keyboard() {
+                            let modifier_state = device.modifier_state();
+                            has_modifiers = modifier_state.contains(gdk::ModifierType::SHIFT_MASK) ||
+                                          modifier_state.contains(gdk::ModifierType::CONTROL_MASK) ||
+                                          modifier_state.contains(gdk::ModifierType::ALT_MASK);
+                        }
+                    }
+                }
+
+                if !has_modifiers {
+                    break;
+                }
+            }
+
             // Type emoticon
             match UinputKeyboard::new() {
                 Ok(mut keyboard) => {
