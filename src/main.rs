@@ -368,10 +368,10 @@ impl EmoticonPicker {
         // Hide window
         self.window.set_visible(false);
 
-        // Wait a bit for window to hide and focus to return
+        // Paste with minimal delay (just enough to let window hide)
         let emoticon = emoticon.to_string();
         let picker = self.clone();
-        glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+        glib::timeout_add_local(std::time::Duration::from_millis(10), move || {
             picker.paste_emoticon(&emoticon, reopen);
             glib::ControlFlow::Break
         });
@@ -379,64 +379,32 @@ impl EmoticonPicker {
 
     /// Paste the emoticon using uinput (kernel-level input injection)
     fn paste_emoticon(&self, emoticon: &str, reopen: bool) {
-        // Wait for window to fully hide and focus to return
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        let emoticon = emoticon.to_string();
+        let picker = self.clone();
 
-        // Wait for modifier keys (like Shift) to be released by checking keyboard state
-        // We'll poll for up to 500ms, checking every 50ms
-        let max_wait = 10; // 10 * 50ms = 500ms max
-        let mut wait_count = 0;
-
-        while wait_count < max_wait {
-            std::thread::sleep(std::time::Duration::from_millis(50));
-            wait_count += 1;
-
-            // Check if we have a display to query modifier state
-            if let Some(display) = gtk::gdk::Display::default() {
-                if let Some(seat) = display.default_seat() {
-                    if let Some(device) = seat.keyboard() {
-                        let modifier_state = device.modifier_state();
-                        let has_modifiers = modifier_state.contains(gdk::ModifierType::SHIFT_MASK) ||
-                                          modifier_state.contains(gdk::ModifierType::CONTROL_MASK) ||
-                                          modifier_state.contains(gdk::ModifierType::ALT_MASK);
-
-                        if !has_modifiers {
-                            break;
-                        }
+        // Use glib's async to avoid blocking GTK
+        glib::spawn_future_local(async move {
+            // Type emoticon
+            match UinputKeyboard::new() {
+                Ok(mut keyboard) => {
+                    if let Err(e) = keyboard.type_string(&emoticon) {
+                        eprintln!("Failed to type emoticon via uinput: {}", e);
                     }
                 }
-            }
-        }
-
-        // Additional small delay for safety
-        std::thread::sleep(std::time::Duration::from_millis(50));
-
-        // Use uinput to type Unicode characters via Ctrl+Shift+u method
-        // This works on X11, Wayland, and even text consoles
-        match UinputKeyboard::new() {
-            Ok(mut keyboard) => {
-                if let Err(e) = keyboard.type_string(emoticon) {
-                    eprintln!("Failed to type emoticon via uinput: {}", e);
+                Err(e) => {
+                    eprintln!("Failed to create uinput device: {}", e);
+                    eprintln!("Note: uinput requires write access to /dev/uinput or /dev/input/uinput");
+                    eprintln!("You may need to add your user to the 'input' group or run with appropriate permissions.");
                 }
             }
-            Err(e) => {
-                eprintln!("Failed to create uinput device: {}", e);
-                eprintln!("Note: uinput requires write access to /dev/uinput or /dev/input/uinput");
-                eprintln!("You may need to add your user to the 'input' group or run with appropriate permissions.");
-            }
-        }
 
-        if reopen {
-            // Show window again after a short delay
-            let picker = self.clone();
-            glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
+            // Handle reopen or exit after typing is done
+            if reopen {
                 picker.reopen_window();
-                glib::ControlFlow::Break
-            });
-        } else {
-            // Exit the application
-            std::process::exit(0);
-        }
+            } else {
+                std::process::exit(0);
+            }
+        });
     }
 
     /// Reopen the window
