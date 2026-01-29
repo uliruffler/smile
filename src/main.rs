@@ -9,10 +9,11 @@
 //! - Shift+Enter pastes emoticon and reopens the window
 //! - Escape key quits the application
 
-use gdk::Key;
+use gtk::gdk;
+use gtk::glib;
 use gtk::prelude::*;
 use gtk::{
-    ApplicationWindow, Box, Button, Entry, Frame, Grid, Label, Orientation, PolicyType,
+    ApplicationWindow, Box, Button, Entry, EventControllerKey, FlowBox, Frame, Label, Orientation, PolicyType,
     ScrolledWindow,
 };
 use std::cell::RefCell;
@@ -25,7 +26,7 @@ mod uinput;
 use uinput::UinputKeyboard;
 
 mod settings;
-use settings::Config;
+use settings::{Config, WindowState};
 
 #[cfg(test)]
 mod tests;
@@ -46,12 +47,23 @@ struct EmoticonPicker {
 impl EmoticonPicker {
     /// Create a new emoticon picker window
     fn new(app: &gtk::Application) -> Self {
+        // Setup configuration
+        let config = Config::new().expect("Failed to initialize configuration");
+
+        // Create window with default or saved dimensions
         let window = ApplicationWindow::builder()
             .application(app)
             .title("Smile - Emoticon Picker")
-            .default_width(600)
-            .default_height(500)
             .build();
+
+        // Load and apply saved window state
+        if let Some(state) = config.load_window_state() {
+            window.set_default_size(state.width, state.height);
+            // Note: GTK4 doesn't allow setting position directly for Wayland compatibility
+            // Position will be managed by the window manager
+        } else {
+            window.set_default_size(600, 500);
+        }
 
         // Enable system theme support (dark/light mode)
         if let Some(settings) = gtk::Settings::default() {
@@ -59,8 +71,6 @@ impl EmoticonPicker {
             settings.set_gtk_application_prefer_dark_theme(true);
         }
 
-        // Setup configuration
-        let config = Config::new().expect("Failed to initialize configuration");
 
         // Load history
         let history = config.load_recent();
@@ -110,10 +120,10 @@ impl EmoticonPicker {
         picker.build_emoticons_display("");
 
         // Connect search entry key press event for Down arrow navigation
-        let key_controller = gtk::EventControllerKey::new();
+        let key_controller = EventControllerKey::new();
         let picker_clone = picker.clone();
         key_controller.connect_key_pressed(move |_, key, _, _| {
-            if key == Key::Down {
+            if key == gdk::Key::Down {
                 // Focus the first button when Down is pressed
                 if let Some(ref button) = *picker_clone.first_button.borrow() {
                     button.grab_focus();
@@ -132,10 +142,12 @@ impl EmoticonPicker {
         });
 
         // Connect key press event for Escape on window
-        let window_key_controller = gtk::EventControllerKey::new();
+        let window_key_controller = EventControllerKey::new();
         let picker_clone = picker.clone();
         window_key_controller.connect_key_pressed(move |_, key, _, _| {
-            if key == Key::Escape {
+            if key == gdk::Key::Escape {
+                // Save window state before exiting
+                picker_clone.save_window_state();
                 std::process::exit(0);
             }
             // Auto-focus search field when typing (printable characters)
@@ -169,6 +181,13 @@ impl EmoticonPicker {
         });
         window.add_controller(window_key_controller);
 
+        // Save window state when closing
+        let picker_for_close = picker.clone();
+        window.connect_close_request(move |_| {
+            picker_for_close.save_window_state();
+            glib::Propagation::Proceed
+        });
+
         // Don't focus on search entry initially - will focus on first button later
         // search_entry.grab_focus();
 
@@ -180,6 +199,21 @@ impl EmoticonPicker {
         let history = self.history.borrow();
         let config = self.config.borrow();
         config.save_recent(&history).ok();
+    }
+
+    /// Save window state (size and position)
+    fn save_window_state(&self) {
+        let (width, height) = self.window.default_size();
+        // GTK4 doesn't provide a reliable way to get window position on Wayland
+        // We'll store position as 0,0 for now (window manager handles positioning)
+        let state = WindowState {
+            width,
+            height,
+            x: 0,
+            y: 0,
+        };
+        let config = self.config.borrow();
+        config.save_window_state(&state).ok();
     }
 
     /// Add emoticon to history (most recent first)
@@ -218,16 +252,17 @@ impl EmoticonPicker {
         let history = self.history.borrow();
         if !history.is_empty() && filter_text.is_empty() {
             let history_frame = Frame::new(Some("Recently Used"));
-            let history_grid = Grid::new();
-            history_grid.set_column_spacing(5);
-            history_grid.set_row_spacing(5);
-            history_grid.set_margin_start(10);
-            history_grid.set_margin_end(10);
-            history_grid.set_margin_top(10);
-            history_grid.set_margin_bottom(10);
+            let history_flowbox = FlowBox::new();
+            history_flowbox.set_selection_mode(gtk::SelectionMode::None);
+            history_flowbox.set_max_children_per_line(30);
+            history_flowbox.set_column_spacing(5);
+            history_flowbox.set_row_spacing(5);
+            history_flowbox.set_margin_start(10);
+            history_flowbox.set_margin_end(10);
+            history_flowbox.set_margin_top(10);
+            history_flowbox.set_margin_bottom(10);
+            history_flowbox.set_homogeneous(false);
 
-            let mut col = 0;
-            let mut row = 0;
             let mut is_first = true;
             for emoticon in history.iter() {
                 let button = self.create_emoticon_button(emoticon);
@@ -238,15 +273,10 @@ impl EmoticonPicker {
                     is_first = false;
                 }
 
-                history_grid.attach(&button, col, row, 1, 1);
-                col += 1;
-                if col >= 10 {
-                    col = 0;
-                    row += 1;
-                }
+                history_flowbox.append(&button);
             }
 
-            history_frame.set_child(Some(&history_grid));
+            history_frame.set_child(Some(&history_flowbox));
             self.emoticons_box.append(&history_frame);
         }
         drop(history);
@@ -275,17 +305,18 @@ impl EmoticonPicker {
 
             // Category frame
             let frame = Frame::new(Some(category));
-            let grid = Grid::new();
-            grid.set_column_spacing(5);
-            grid.set_row_spacing(5);
-            grid.set_margin_start(10);
-            grid.set_margin_end(10);
-            grid.set_margin_top(10);
-            grid.set_margin_bottom(10);
+            let flowbox = FlowBox::new();
+            flowbox.set_selection_mode(gtk::SelectionMode::None);
+            flowbox.set_max_children_per_line(30);
+            flowbox.set_column_spacing(5);
+            flowbox.set_row_spacing(5);
+            flowbox.set_margin_start(10);
+            flowbox.set_margin_end(10);
+            flowbox.set_margin_top(10);
+            flowbox.set_margin_bottom(10);
+            flowbox.set_homogeneous(false);
 
-            // Add emoticons to grid
-            let mut col = 0;
-            let mut row = 0;
+            // Add emoticons to flowbox
             let mut is_first = self.first_button.borrow().is_none();
             for emoticon in filtered_emoticons {
                 let button = self.create_emoticon_button(emoticon);
@@ -296,15 +327,10 @@ impl EmoticonPicker {
                     is_first = false;
                 }
 
-                grid.attach(&button, col, row, 1, 1);
-                col += 1;
-                if col >= 10 {
-                    col = 0;
-                    row += 1;
-                }
+                flowbox.append(&button);
             }
 
-            frame.set_child(Some(&grid));
+            frame.set_child(Some(&flowbox));
             self.emoticons_box.append(&frame);
         }
 
@@ -326,6 +352,8 @@ impl EmoticonPicker {
     fn create_emoticon_button(&self, emoticon: &str) -> Button {
         let button = Button::with_label(emoticon);
         button.set_size_request(50, 40);
+        button.set_hexpand(false);
+        button.set_vexpand(false);
         button.set_can_focus(true);
         button.set_focus_on_click(true);
 
@@ -339,11 +367,11 @@ impl EmoticonPicker {
         });
 
         // Add key press handler for Enter and Shift+Enter
-        let key_controller = gtk::EventControllerKey::new();
+        let key_controller = EventControllerKey::new();
         let emoticon_for_key = emoticon.clone();
         let picker_for_key = self.clone();
         key_controller.connect_key_pressed(move |_, key, _, modifiers| {
-            if key == Key::Return || key == Key::KP_Enter {
+            if key == gdk::Key::Return || key == gdk::Key::KP_Enter {
                 if modifiers.contains(gdk::ModifierType::SHIFT_MASK) {
                     // Shift+Enter: paste and reopen
                     picker_for_key.on_emoticon_clicked(&emoticon_for_key, true);

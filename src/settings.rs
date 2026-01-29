@@ -589,6 +589,15 @@ pub struct Settings {
     pub emoticon_keywords: HashMap<String, EmoticonKeywords>,
 }
 
+/// Window state structure for remembering window dimensions and position
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindowState {
+    pub width: i32,
+    pub height: i32,
+    pub x: i32,
+    pub y: i32,
+}
+
 fn default_max_recent() -> usize {
     10
 }
@@ -629,6 +638,7 @@ pub struct Config {
     #[allow(dead_code)]
     settings_file: PathBuf,
     recent_file: PathBuf,
+    window_state_file: PathBuf,
     settings: Settings,
 }
 
@@ -643,6 +653,7 @@ impl Config {
         let config_dir = home_dir.join(".smile");
         let settings_file = config_dir.join("settings.toml");
         let recent_file = config_dir.join("recent.json");
+        let window_state_file = config_dir.join("window_state.json");
 
         // Create directory if it doesn't exist
         fs::create_dir_all(&config_dir)?;
@@ -659,6 +670,7 @@ impl Config {
             config_dir,
             settings_file,
             recent_file,
+            window_state_file,
             settings,
         })
     }
@@ -775,6 +787,23 @@ impl Config {
     #[allow(dead_code)]
     pub fn config_dir(&self) -> &PathBuf {
         &self.config_dir
+    }
+
+    /// Load window state
+    pub fn load_window_state(&self) -> Option<WindowState> {
+        if let Ok(content) = fs::read_to_string(&self.window_state_file) {
+            if let Ok(state) = serde_json::from_str::<WindowState>(&content) {
+                return Some(state);
+            }
+        }
+        None
+    }
+
+    /// Save window state
+    pub fn save_window_state(&self, state: &WindowState) -> std::io::Result<()> {
+        let json = serde_json::to_string_pretty(state)?;
+        fs::write(&self.window_state_file, json)?;
+        Ok(())
     }
 }
 
