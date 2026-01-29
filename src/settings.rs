@@ -22,6 +22,9 @@ max_recent = 10
 [keywords.happy]
 terms = ["happy", "joy", "smile", "grin", "cheerful", "glad", "pleased"]
 
+[keywords.laughing]
+terms = ["laugh", "lol", "lmao", "rofl", "haha", "hehe", "funny", "hilarious", "tears", "crying", "joy"]
+
 [keywords.sad]
 terms = ["sad", "cry", "unhappy", "depressed", "down", "tear", "weep"]
 
@@ -103,6 +106,24 @@ terms = ["love", "hearts", "smile", "adore", "affection"]
 
 [emoticon_keywords."😘"]
 terms = ["kiss", "blow", "love", "mwah"]
+
+[emoticon_keywords."😂"]
+terms = ["laugh", "tears", "joy", "lol", "crying", "funny", "haha"]
+
+[emoticon_keywords."🤣"]
+terms = ["rofl", "laugh", "rolling", "floor", "hilarious", "lmao", "funny"]
+
+[emoticon_keywords."😹"]
+terms = ["cat", "laugh", "tears", "joy", "lol", "funny"]
+
+[emoticon_keywords."😅"]
+terms = ["grin", "sweat", "nervous", "laugh", "relief", "phew"]
+
+[emoticon_keywords."🥲"]
+terms = ["smile", "tear", "touched", "grateful", "bittersweet", "emotional"]
+
+[emoticon_keywords."☺️"]
+terms = ["smile", "blush", "happy", "pleased", "content"]
 
 [emoticon_keywords."😢"]
 terms = ["cry", "tear", "sad", "upset"]

@@ -231,35 +231,35 @@ impl UinputKeyboard {
 
         // Press Ctrl+Shift+u to start Unicode input mode
         self.press_key(KEY_LEFTCTRL)?;
-        thread::sleep(Duration::from_millis(10));
+        thread::sleep(Duration::from_millis(5));
         self.press_key(KEY_LEFTSHIFT)?;
-        thread::sleep(Duration::from_millis(10));
+        thread::sleep(Duration::from_millis(5));
         self.press_key(KEY_U)?;
-        thread::sleep(Duration::from_millis(10));
+        thread::sleep(Duration::from_millis(5));
 
         // Release u, Shift, and Ctrl
         self.release_key(KEY_U)?;
-        thread::sleep(Duration::from_millis(10));
+        thread::sleep(Duration::from_millis(5));
         self.release_key(KEY_LEFTSHIFT)?;
-        thread::sleep(Duration::from_millis(10));
+        thread::sleep(Duration::from_millis(5));
         self.release_key(KEY_LEFTCTRL)?;
-        thread::sleep(Duration::from_millis(20));
+        thread::sleep(Duration::from_millis(10));
 
         // Type each hex digit
         for hex_char in hex_string.chars() {
             if let Some(keycode) = Self::hex_char_to_keycode(hex_char) {
                 self.press_key(keycode)?;
-                thread::sleep(Duration::from_millis(10));
+                thread::sleep(Duration::from_millis(5));
                 self.release_key(keycode)?;
-                thread::sleep(Duration::from_millis(10));
+                thread::sleep(Duration::from_millis(5));
             }
         }
 
         // Press Enter to confirm
         self.press_key(KEY_ENTER)?;
-        thread::sleep(Duration::from_millis(10));
+        thread::sleep(Duration::from_millis(5));
         self.release_key(KEY_ENTER)?;
-        thread::sleep(Duration::from_millis(10));
+        thread::sleep(Duration::from_millis(5));
 
         Ok(())
     }
@@ -269,7 +269,7 @@ impl UinputKeyboard {
         for c in text.chars() {
             self.type_unicode_char(c)?;
             // Small delay between characters
-            thread::sleep(Duration::from_millis(20));
+            thread::sleep(Duration::from_millis(10));
         }
         Ok(())
     }

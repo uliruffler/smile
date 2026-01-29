@@ -8,6 +8,11 @@ pub fn get_emoticons() -> &'static HashMap<&'static str, Vec<String>> {
         map.insert("Happy", vec![
             "😀", "😃", "😄", "😁", "😆", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘"
         ].iter().map(|s| s.to_string()).collect());
+        
+        map.insert("Laughing", vec![
+            "😂", "🤣", "😹", "😆", "😅", "🥲", "☺️", "😄", "😁"
+        ].iter().map(|s| s.to_string()).collect());
+        
         map.insert("Sad", vec![
             "😢", "😭", "😿", "😔", "😞", "😟", "😥", "😰", "😨", "😧", "😦"
         ].iter().map(|s| s.to_string()).collect());

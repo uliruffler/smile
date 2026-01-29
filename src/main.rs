@@ -53,6 +53,12 @@ impl EmoticonPicker {
             .default_height(500)
             .build();
 
+        // Enable system theme support (dark/light mode)
+        if let Some(settings) = gtk::Settings::default() {
+            // Force dark theme preference to ensure app follows system dark mode
+            settings.set_gtk_application_prefer_dark_theme(true);
+        }
+
         // Setup configuration
         let config = Config::new().expect("Failed to initialize configuration");
 
@@ -339,7 +345,7 @@ impl EmoticonPicker {
         key_controller.connect_key_pressed(move |_, key, _, modifiers| {
             if key == Key::Return || key == Key::KP_Enter {
                 if modifiers.contains(gdk::ModifierType::SHIFT_MASK) {
-                    // Shift+Enter: paste and reopen (old behavior)
+                    // Shift+Enter: paste and reopen
                     picker_for_key.on_emoticon_clicked(&emoticon_for_key, true);
                 } else {
                     // Enter: paste and close
@@ -373,14 +379,42 @@ impl EmoticonPicker {
 
     /// Paste the emoticon using uinput (kernel-level input injection)
     fn paste_emoticon(&self, emoticon: &str, reopen: bool) {
-        // Wait a bit for window to fully hide and focus to return
+        // Wait for window to fully hide and focus to return
         std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // Wait for modifier keys (like Shift) to be released by checking keyboard state
+        // We'll poll for up to 500ms, checking every 50ms
+        let max_wait = 10; // 10 * 50ms = 500ms max
+        let mut wait_count = 0;
+
+        while wait_count < max_wait {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            wait_count += 1;
+
+            // Check if we have a display to query modifier state
+            if let Some(display) = gtk::gdk::Display::default() {
+                if let Some(seat) = display.default_seat() {
+                    if let Some(device) = seat.keyboard() {
+                        let modifier_state = device.modifier_state();
+                        let has_modifiers = modifier_state.contains(gdk::ModifierType::SHIFT_MASK) ||
+                                          modifier_state.contains(gdk::ModifierType::CONTROL_MASK) ||
+                                          modifier_state.contains(gdk::ModifierType::ALT_MASK);
+
+                        if !has_modifiers {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Additional small delay for safety
+        std::thread::sleep(std::time::Duration::from_millis(50));
 
         // Use uinput to type Unicode characters via Ctrl+Shift+u method
         // This works on X11, Wayland, and even text consoles
         match UinputKeyboard::new() {
             Ok(mut keyboard) => {
-                println!("Typing emoticon using Unicode input...");
                 if let Err(e) = keyboard.type_string(emoticon) {
                     eprintln!("Failed to type emoticon via uinput: {}", e);
                 }
@@ -430,6 +464,42 @@ fn main() {
         .build();
 
     app.connect_activate(|app| {
+        // Load custom CSS to ensure proper theme support
+        let css_provider = gtk::CssProvider::new();
+        css_provider.load_from_string(
+            r#"
+            /* Support for system dark/light theme */
+            window {
+                background-color: @theme_bg_color;
+                color: @theme_fg_color;
+            }
+
+            entry {
+                background-color: @theme_base_color;
+                color: @theme_text_color;
+            }
+
+            button {
+                background-color: @theme_bg_color;
+                color: @theme_fg_color;
+            }
+
+            /* Ensure emoticon buttons are readable in both light and dark themes */
+            button {
+                border: 1px solid @borders;
+            }
+            "#
+        );
+
+        // Apply CSS to the default display
+        if let Some(display) = gtk::gdk::Display::default() {
+            gtk::style_context_add_provider_for_display(
+                &display,
+                &css_provider,
+                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
+        }
+
         // Create and show the emoticon picker
         let picker = EmoticonPicker::new(app);
         picker.show();

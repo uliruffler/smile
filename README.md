@@ -2,7 +2,7 @@
 A simple emoticon picker for Gnome/Linux written in Rust.
 
 ## Features
-- 🎨 Comprehensive emoticon collection organized by category
+- 🎨 Comprehensive emoticon collection organized by category (including laughing emojis!)
 - 🔍 Search functionality to filter emoticons
 - 📝 Recently used emoticons (last 10)
 - ⚡ Quick paste via automatic typing using kernel-level uinput (works everywhere!)
@@ -10,19 +10,19 @@ A simple emoticon picker for Gnome/Linux written in Rust.
   - **Enter**: Paste emoticon and close app
   - **Shift+Enter**: Paste emoticon and reopen for multiple selections
   - **Escape**: Quit application
-- 🖼️ Native GTK3 interface
+- 🌓 Automatic dark/light theme support (follows system settings)
+- 🖼️ Native GTK4 interface
 - 🪟 Works on X11, Wayland, and even text consoles
-
 ## Requirements
 
 ### Runtime Dependencies
-- GTK3 libraries
+- GTK4 libraries
 - Kernel module: `uinput` (usually built-in)
 - User must be in the `input` group for automatic typing
 
 ### Build Dependencies
 - Rust 1.70+
-- GTK3 development libraries
+- GTK4 development libraries
 - pkg-config
 
 ## Installation
@@ -30,7 +30,7 @@ A simple emoticon picker for Gnome/Linux written in Rust.
 ### Ubuntu/Debian
 ```bash
 # Install dependencies
-sudo apt-get install libgtk-3-dev pkg-config
+sudo apt-get install libgtk-4-dev pkg-config
 
 # Setup uinput permissions
 sudo usermod -aG input $USER
@@ -43,12 +43,11 @@ cargo build --release
 
 # The build creates a wrapper script that handles group permissions automatically
 # You can use it immediately without logging out: ./target/release/smile
-```
 
 ### Fedora/RHEL
 ```bash
 # Install dependencies
-sudo dnf install gtk3-devel pkg-config
+sudo dnf install gtk4-devel pkg-config
 
 # Setup uinput permissions
 sudo usermod -aG input $USER
@@ -58,7 +57,7 @@ sudo modprobe uinput
 
 # Build
 cargo build --release
-
+```
 # The build creates a wrapper script that handles group permissions automatically
 # You can use it immediately without logging out: ./target/release/smile
 ```
