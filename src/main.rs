@@ -125,16 +125,44 @@ impl EmoticonPicker {
 
         // Connect key press event for Escape on window
         let window_key_controller = gtk::EventControllerKey::new();
+        let picker_clone = picker.clone();
         window_key_controller.connect_key_pressed(move |_, key, _, _| {
             if key == Key::Escape {
                 std::process::exit(0);
+            }
+            // Auto-focus search field when typing (printable characters)
+            // Check if a printable character is typed and search is not already focused
+            if !picker_clone.search_entry.has_focus() {
+                if let Some(ch) = key.to_unicode() {
+                    // Get current text and cursor position
+                    let current_text = picker_clone.search_entry.text();
+                    let cursor_pos = picker_clone.search_entry.position();
+
+                    // Insert the character at the cursor position
+                    let mut new_text = current_text.to_string();
+                    new_text.insert(cursor_pos as usize, ch);
+
+                    // Focus the search entry first (before setting text to avoid selection issues)
+                    picker_clone.search_entry.grab_focus();
+
+                    // Update the search entry
+                    picker_clone.search_entry.set_text(&new_text);
+
+                    // Set cursor position and ensure no text is selected
+                    let new_pos = (cursor_pos + 1) as i32;
+                    picker_clone.search_entry.set_position(new_pos);
+                    picker_clone.search_entry.select_region(new_pos, new_pos);
+
+                    // Stop the event from propagating since we handled it
+                    return glib::Propagation::Stop;
+                }
             }
             glib::Propagation::Proceed
         });
         window.add_controller(window_key_controller);
 
-        // Focus on search entry
-        search_entry.grab_focus();
+        // Don't focus on search entry initially - will focus on first button later
+        // search_entry.grab_focus();
 
         picker
     }
@@ -223,8 +251,8 @@ impl EmoticonPicker {
                 emoticons
                     .iter()
                     .filter(|e| {
-                        // Match emoticon text
-                        e.to_lowercase().contains(&filter_lower) ||
+                        // Match emoticon keywords or the emoticon itself
+                        config.matches_emoticon_keywords(e, &filter_lower) ||
                         // Match category name or keywords
                         config.matches_category_keywords(category, &filter_lower)
                     })
@@ -273,12 +301,25 @@ impl EmoticonPicker {
         }
 
         self.window.present();
+
+        // Focus the first button if available (and search is empty)
+        // Use a small timeout to ensure window is fully mapped and focus highlight appears
+        if filter_text.is_empty() {
+            let first_button = self.first_button.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(50), move || {
+                if let Some(ref button) = *first_button.borrow() {
+                    button.grab_focus();
+                }
+            });
+        }
     }
 
     /// Create a button for an emoticon
     fn create_emoticon_button(&self, emoticon: &str) -> Button {
         let button = Button::with_label(emoticon);
         button.set_size_request(50, 40);
+        button.set_can_focus(true);
+        button.set_focus_on_click(true);
 
         let emoticon = emoticon.to_string();
         let picker = self.clone();
@@ -339,11 +380,12 @@ impl EmoticonPicker {
     fn reopen_window(&self) {
         self.window.set_visible(true);
         self.window.present();
-        self.search_entry.grab_focus();
 
         // Rebuild display to show updated history
         let filter_text = self.search_entry.text().to_string();
         self.build_emoticons_display(&filter_text);
+
+        // Focus will be set by build_emoticons_display on the first button
     }
 
     /// Show the window
