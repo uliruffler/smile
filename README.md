@@ -6,7 +6,10 @@ A simple emoticon picker for Gnome/Linux written in Rust.
 - 🔍 Search functionality to filter emoticons
 - 📝 Recently used emoticons (last 10)
 - ⚡ Quick paste via automatic typing using kernel-level uinput (works everywhere!)
-- ⌨️ Escape key to quit
+- ⌨️ Keyboard shortcuts:
+  - **Enter**: Paste emoticon and close app
+  - **Shift+Enter**: Paste emoticon and reopen for multiple selections
+  - **Escape**: Quit application
 - 🖼️ Native GTK3 interface
 - 🪟 Works on X11, Wayland, and even text consoles
 
@@ -95,10 +98,11 @@ cargo build --release
 ```
 ## How It Works
 
-1. Click an emoticon
+1. Click an emoticon or press Enter when one is focused
 2. The emoticon is automatically typed into your active application via kernel-level uinput
-3. Window reappears for quick successive insertions
-4. Press Escape to quit
+3. **Enter**: Pastes the emoticon and closes the application
+4. **Shift+Enter** or **Click**: Pastes the emoticon and reopens the window for quick successive insertions
+5. Press Escape to quit
 
 **Technical Details**: Smile uses Linux's `uinput` module to create a virtual keyboard and inject key events directly at the kernel input layer. This means it works universally:
 - ✅ X11 sessions

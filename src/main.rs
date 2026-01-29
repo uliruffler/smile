@@ -5,6 +5,8 @@
 //! - Search field to filter emoticons
 //! - Shows last 10 used emoticons
 //! - Clicks paste the emoticon and reopen the window
+//! - Enter key pastes emoticon and closes the application
+//! - Shift+Enter pastes emoticon and reopens the window
 //! - Escape key quits the application
 
 use gdk::Key;
@@ -322,16 +324,38 @@ impl EmoticonPicker {
         button.set_focus_on_click(true);
 
         let emoticon = emoticon.to_string();
+
+        // Clone for the click handler
+        let emoticon_for_click = emoticon.clone();
         let picker = self.clone();
         button.connect_clicked(move |_| {
-            picker.on_emoticon_clicked(&emoticon);
+            picker.on_emoticon_clicked(&emoticon_for_click, false); // Default: close app after paste
         });
+
+        // Add key press handler for Enter and Shift+Enter
+        let key_controller = gtk::EventControllerKey::new();
+        let emoticon_for_key = emoticon.clone();
+        let picker_for_key = self.clone();
+        key_controller.connect_key_pressed(move |_, key, _, modifiers| {
+            if key == Key::Return || key == Key::KP_Enter {
+                if modifiers.contains(gdk::ModifierType::SHIFT_MASK) {
+                    // Shift+Enter: paste and reopen (old behavior)
+                    picker_for_key.on_emoticon_clicked(&emoticon_for_key, true);
+                } else {
+                    // Enter: paste and close
+                    picker_for_key.on_emoticon_clicked(&emoticon_for_key, false);
+                }
+                return glib::Propagation::Stop;
+            }
+            glib::Propagation::Proceed
+        });
+        button.add_controller(key_controller);
 
         button
     }
 
     /// Handle emoticon button click
-    fn on_emoticon_clicked(&self, emoticon: &str) {
+    fn on_emoticon_clicked(&self, emoticon: &str, reopen: bool) {
         // Add to history
         self.add_to_history(emoticon.to_string());
 
@@ -342,13 +366,13 @@ impl EmoticonPicker {
         let emoticon = emoticon.to_string();
         let picker = self.clone();
         glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-            picker.paste_emoticon(&emoticon);
+            picker.paste_emoticon(&emoticon, reopen);
             glib::ControlFlow::Break
         });
     }
 
     /// Paste the emoticon using uinput (kernel-level input injection)
-    fn paste_emoticon(&self, emoticon: &str) {
+    fn paste_emoticon(&self, emoticon: &str, reopen: bool) {
         // Wait a bit for window to fully hide and focus to return
         std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -368,12 +392,17 @@ impl EmoticonPicker {
             }
         }
 
-        // Show window again after a short delay
-        let picker = self.clone();
-        glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
-            picker.reopen_window();
-            glib::ControlFlow::Break
-        });
+        if reopen {
+            // Show window again after a short delay
+            let picker = self.clone();
+            glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
+                picker.reopen_window();
+                glib::ControlFlow::Break
+            });
+        } else {
+            // Exit the application
+            std::process::exit(0);
+        }
     }
 
     /// Reopen the window
