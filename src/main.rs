@@ -366,7 +366,7 @@ impl EmoticonPicker {
             picker.on_emoticon_clicked(&emoticon_for_click, false); // Default: close app after paste
         });
 
-        // Add key press handler for Enter and Shift+Enter
+        // Add key press handler for Enter, Shift+Enter, and arrow keys
         let key_controller = EventControllerKey::new();
         let emoticon_for_key = emoticon.clone();
         let picker_for_key = self.clone();
@@ -380,12 +380,137 @@ impl EmoticonPicker {
                     picker_for_key.on_emoticon_clicked(&emoticon_for_key, false);
                 }
                 return glib::Propagation::Stop;
+            } else if key == gdk::Key::Up || key == gdk::Key::Down ||
+                      key == gdk::Key::Left || key == gdk::Key::Right {
+                // Handle arrow key navigation
+                return picker_for_key.handle_arrow_navigation(key);
             }
             glib::Propagation::Proceed
         });
         button.add_controller(key_controller);
 
         button
+    }
+
+    /// Handle arrow key navigation between emoticon buttons
+    fn handle_arrow_navigation(&self, key: gdk::Key) -> glib::Propagation {
+        // Get the currently focused widget
+        use gtk::prelude::GtkWindowExt;
+        let focused_widget = GtkWindowExt::focus(&self.window);
+        if focused_widget.is_none() {
+            return glib::Propagation::Proceed;
+        }
+
+        let focused = focused_widget.unwrap();
+
+        // Find the parent FlowBox
+        let mut current = Some(focused.clone());
+        let mut flowbox: Option<FlowBox> = None;
+
+        while let Some(widget) = current {
+            if let Ok(fb) = widget.clone().downcast::<FlowBox>() {
+                flowbox = Some(fb);
+                break;
+            }
+            current = widget.parent();
+        }
+
+        if flowbox.is_none() {
+            return glib::Propagation::Proceed;
+        }
+
+        let flowbox = flowbox.unwrap();
+
+        // Find the currently focused FlowBoxChild
+        let focused_child = focused.parent();
+        if focused_child.is_none() {
+            return glib::Propagation::Proceed;
+        }
+
+        let focused_child = focused_child.unwrap();
+        let focused_flowbox_child = focused_child.downcast::<gtk::FlowBoxChild>();
+        if focused_flowbox_child.is_err() {
+            return glib::Propagation::Proceed;
+        }
+
+        let focused_flowbox_child = focused_flowbox_child.unwrap();
+        let current_index = focused_flowbox_child.index();
+
+        // Get all children
+        let mut children = Vec::new();
+        let mut child = flowbox.first_child();
+        while let Some(c) = child {
+            if let Ok(flowbox_child) = c.clone().downcast::<gtk::FlowBoxChild>() {
+                children.push(flowbox_child.clone());
+            }
+            child = c.next_sibling();
+        }
+
+        if children.is_empty() {
+            return glib::Propagation::Proceed;
+        }
+
+        // Calculate the number of columns based on flowbox width and button size
+        let flowbox_width = flowbox.width();
+        let column_spacing = flowbox.column_spacing() as i32;
+        let button_width = 50i32; // From button.set_size_request(50, 40)
+
+        // Account for margins
+        let margin_start = flowbox.margin_start();
+        let margin_end = flowbox.margin_end();
+        let available_width = flowbox_width - margin_start - margin_end;
+
+        // Calculate columns (at least 1)
+        let button_total_width = button_width + column_spacing;
+        let columns = std::cmp::max(1, (available_width + column_spacing) / button_total_width);
+
+        let current_row = current_index / columns;
+        let current_col = current_index % columns;
+
+        let target_index = match key {
+            gdk::Key::Up => {
+                if current_row > 0 {
+                    Some((current_row - 1) * columns + current_col)
+                } else {
+                    None // Don't wrap
+                }
+            },
+            gdk::Key::Down => {
+                let target = (current_row + 1) * columns + current_col;
+                if target < children.len() as i32 {
+                    Some(target)
+                } else {
+                    None // Don't wrap
+                }
+            },
+            gdk::Key::Left => {
+                if current_col > 0 {
+                    Some(current_index - 1)
+                } else {
+                    None // Don't wrap
+                }
+            },
+            gdk::Key::Right => {
+                if current_col < columns - 1 && current_index + 1 < children.len() as i32 {
+                    Some(current_index + 1)
+                } else {
+                    None // Don't wrap
+                }
+            },
+            _ => None,
+        };
+
+        if let Some(target) = target_index {
+            if target >= 0 && (target as usize) < children.len() {
+                // Get the button from the target child
+                if let Some(button) = children[target as usize].child() {
+                    button.grab_focus();
+                    return glib::Propagation::Stop;
+                }
+            }
+        }
+
+        glib::Propagation::Stop // Stop propagation even if we didn't move
     }
 
     /// Handle emoticon button click
